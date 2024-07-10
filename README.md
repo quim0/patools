@@ -5,11 +5,7 @@ Collection of tools and scripts to work with Pairwise Alignment data, specially 
 ## Installation
 
 Clone the repository:
-```bash
-git clone https://github.com/quim0/seqtools.git
-```
-
-Optionally, create a virtual environment:
+Optionally, create a virtual environment to avoid conflicts with other Python packages:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -17,7 +13,7 @@ source venv/bin/activate
 
 Install the tools:
 ```bash
-pip install -e .
+pip3 install git+https://github.com/quim0/patools.git
 ```
 
 ## Tools
