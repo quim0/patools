@@ -40,11 +40,11 @@ def plot_cummulative_scores(data):
     except:
         pass
 
-    plt.rcParams['figure.dpi']= 200
+    plt.rcParams['figure.dpi']= 300
 
     fig, ax = plt.subplots()
 
-    min_x = float('inf') 
+    min_x = float('inf')
     max_x = 0
 
     for k, v in data.items():
@@ -69,17 +69,69 @@ def plot_cummulative_scores(data):
                 if idx > 0:
                     y[idx] += y[idx-1]
 
+        print(f"Plotting {k} with {len(x)} points")
         if k == 'ground_truth':
             label = 'Optimal solution'
         else:
-            label = k.split('/')[-2]
-        ax.plot(x, y, label=label)
+            #label = k.split('/')[-2]
+            # TODO: file name
+            label = k
+        ax.plot(x, y, label=label, linewidth=0.3)
+
+
+    # add vertical line at x = 100, 500, 1000, 5000
+    ax.axvline(x=100, color='gray', linestyle='--', linewidth=0.5)
+    ax.axvline(x=500, color='gray', linestyle='--', linewidth=0.5)
+    ax.axvline(x=1000, color='gray', linestyle='--', linewidth=0.5)
+    ax.axvline(x=5000, color='gray', linestyle='--', linewidth=0.5)
 
     ax.set(xlabel='Score', ylabel='Cummulative count',
            title='Cummulative scores')
     #ax.set_xlim(min_x-1, max_x+1)
     ax.legend()
-    plt.savefig('cummulative_scores.png')
+    plt.savefig('cummulative_scores.svg')
+
+def check_score_edit(score, cigar_ops, cigar_reps):
+    score_calc = 0
+    for idx, op in enumerate(cigar_ops):
+        reps = cigar_reps[idx]
+        if op == 'M':
+            continue
+        elif op == 'X':
+            score_calc += reps
+        elif op in ['I', 'D']:
+            score_calc += reps
+
+    return (score == score_calc, score_calc)
+
+def check_score_affine(score, cigar_ops, cigar_reps, X, O, E):
+    score_calc = 0
+    for idx, op in enumerate(cigar_ops):
+        reps = cigar_reps[idx]
+        if op == 'M':
+            continue
+        elif op == 'X':
+            score_calc += X * reps
+        elif op in ['I', 'D']:
+            score_calc += O + E * reps
+
+    return (score == score_calc, score_calc)
+
+def check_score_affine2p(score, cigar_ops, cigar_reps, X, O1, E1, O2, E2):
+    score_calc = 0
+    for idx, op in enumerate(cigar_ops):
+        reps = cigar_reps[idx]
+        if op == 'M':
+            continue
+        elif op == 'X':
+            score_calc += X * reps
+        elif op in ['I', 'D']:
+            score_calc += min(
+                O1 + E1 * reps,
+                O2 + E2 * reps
+            )
+
+    return (score == score_calc, score_calc)
 
 def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
     text_pos = 0
@@ -118,7 +170,8 @@ def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
 def checkalign():
     parser = argparse.ArgumentParser()
     parser.add_argument('files', nargs='*', help='Files with the results to check (- for stdin)')
-    parser.add_argument('-g', '--penalties', default='1,0,1', help='Penalties in x,o,e format (mismatch, gap-open, gap-extend). Default is 1,0,1 (Edit distance)')
+    parser.add_argument('-g', '--penalties', default='1,0,1,0,0', help='Penalties in x,o,e,o1,e1 format (mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 1,0,1,0,0 (equivalent to edit distance)')
+    parser.add_argument('-d', '--distance-function', default='edit', help='Distance function. \'edit\', \'affine\' or \'affine2p\'. Default is \'edit\'')
     parser.add_argument('-q', '--quiet', required=False, action='store_true', help='Don\'t print any output on the stdout')
     parser.add_argument('-v', '--verbose', required=False, action='store_true', help='Print additonal information about incorrect CIGARs')
     parser.add_argument('-s', '--sequences', required=False, help='File with the input sequences')
@@ -127,7 +180,18 @@ def checkalign():
 
     args = parser.parse_args()
 
-    X,O,E = map(int, args.penalties.split(','))
+    penalties = args.penalties.split(',')
+    if args.distance_function == 'affine' and len(penalties) < 3:
+        error_console.print("Invalid number of penalties")
+        quit(1)
+    if args.distance_function == 'affine2p' and len(penalties) < 5:
+        error_console.print("Invalid number of penalties for affine2p")
+        quit(1)
+
+    if args.distance_function == 'affine':
+        X,O,E = map(int, penalties[:3])
+    elif args.distance_function == 'affine2p':
+        X,O,E,O1,E1 = map(int, penalties[:5])
 
     if args.files == []:
         parser.print_help()
@@ -194,6 +258,8 @@ def checkalign():
                 error_console.print(f'Error opening file {results_file}... Skipping.')
                 quit(1)
 
+        avg_score = 0
+        max_score = 0
         correct = 0
         incorrect = 0
         incorrect_cigars_table = generate_incorrect_cigars_table(results_file, with_ground_truth)
@@ -201,6 +267,7 @@ def checkalign():
                     disable=args.quiet, leave=False,
                     bar_format='{l_bar}{bar}{r_bar}' + f' {os.path.basename(results_file)}')
         for line_num, line in enumerate(lines):
+            pbar.set_description(f'(correct={correct}, incorrect={incorrect})')
             line = line.rstrip()
             elements = line.split()
             if len(elements) < 2 or len(elements) > 4:
@@ -236,7 +303,7 @@ def checkalign():
                     ops.append(e)
 
             is_correct = True
-            
+
             if with_ground_truth:
                 if gt_scores[line_num] != score:
                     is_correct = False
@@ -260,18 +327,15 @@ def checkalign():
                     #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
 
             # Calculate score
-            cigar_score = 0
-            for idx, op in enumerate(ops):
-                reps = cigar_reps[idx]
-                if op == 'M':
-                    continue
-                elif op == 'X':
-                    cigar_score += X * reps
-                elif op in ['I', 'D']:
-                    cigar_score += O + E * reps
-
-            if cigar_score != score:
-                is_correct = False
+            if args.distance_function == 'edit':
+                is_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
+            elif args.distance_function == 'affine':
+                is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, X, O, E)
+            elif args.distance_function == 'affine2p':
+                is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, X, O, E, O1, E1)
+            else:
+                error_console.print(f"Invalid distance function {args.distance_function}")
+                quit
 
             if not is_correct:
                 update_incorrect_cigars_table(incorrect_cigars_table, line_num, score, cigar, cigar_score, gt_scores[line_num] if with_ground_truth else None)
@@ -280,6 +344,9 @@ def checkalign():
                 incorrect += 1
             else:
                 correct += 1
+
+            avg_score += score
+            max_score = max(max_score, score)
 
             pbar.update(1)
 
@@ -293,6 +360,8 @@ def checkalign():
         if incorrect > 0 and args.verbose and not args.quiet:
             console.print(incorrect_cigars_table)
 
+        print(f'Average score for {results_file}: {avg_score/(correct+incorrect):.2f}')
+        print(f'Max score for {results_file}: {max_score}')
 
         if args.plot:
             plot_cummulative_scores(plot_data)
