@@ -197,10 +197,14 @@ def checkalign():
         parser.print_help()
         quit(1)
 
-    sequences = []
+    # Open sequences file on the fly if needed
+    seq_f = None
     if args.sequences:
-        with open(args.sequences, 'r') as f:
-            sequences = f.read().splitlines()
+        try:
+            seq_f = open(args.sequences)
+        except Exception as e:
+            print(f"Error opening sequences file: {e}")
+            seq_f = None
 
     plot_data = {}
     if args.plot:
@@ -316,10 +320,20 @@ def checkalign():
                     is_correct = False
                     #if not args.quiet:
                     #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
-            elif len(sequences) > 0:
-                # remove the first > or <
-                pattern = sequences[line_num * 2][1:]
-                text = sequences[line_num * 2 + 1][1:]
+            elif seq_f:
+                # Read next two lines from seq_f
+                pat_line = seq_f.readline()
+                txt_line = seq_f.readline()
+                pattern = text = ''
+                if not pat_line or not txt_line:
+                    print(f"Sequences file ended prematurely at line {line_num}")
+                    seq_f.close()
+                    seq_f = None
+                    pattern = text = ''
+                    break
+                else:
+                    pattern = pat_line.strip()[1:]
+                    text    = txt_line.strip()[1:]
                 ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
                 if not ok:
                     is_correct = False
@@ -349,7 +363,8 @@ def checkalign():
             max_score = max(max_score, score)
 
             pbar.update(1)
-
+        if seq_f:
+            seq_f.close()
         pbar.close()
 
         if (correct+incorrect) == 0:
