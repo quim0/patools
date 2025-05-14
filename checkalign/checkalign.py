@@ -363,7 +363,8 @@ def checkalign():
             max_score = max(max_score, score)
 
             pbar.update(1)
-
+	if seq_f:
+            seq_f.close()
         pbar.close()
 
         if (correct+incorrect) == 0:
