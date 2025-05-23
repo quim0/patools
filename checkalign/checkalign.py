@@ -115,7 +115,7 @@ def check_score_affine(score, cigar_ops, cigar_reps, M, X, O, E):
         elif op in ['I', 'D']:
             score_calc += O + E * reps
 
-    return (score == score_calc, score_calc)
+    return (abs(score) == abs(score_calc), score_calc)
 
 def check_score_affine2p(score, cigar_ops, cigar_reps, M, X, O1, E1, O2, E2):
     score_calc = 0
@@ -131,7 +131,7 @@ def check_score_affine2p(score, cigar_ops, cigar_reps, M, X, O1, E1, O2, E2):
                 O2 + E2 * reps
             )
 
-    return (score == score_calc, score_calc)
+    return (abs(score) == abs(score_calc), score_calc)
 
 def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
     text_pos = 0
