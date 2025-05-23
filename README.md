@@ -23,7 +23,9 @@ pip3 install git+https://github.com/quim0/patools.git
 Check for the correctness of one or multiple `.out` files, or from stdin.
 
 ```
-usage: checkalign [-h] [-g PENALTIES] [-q] [-v] [-s SEQUENCES] [-t GROUND_TRUTH] [-p] [files ...]
+usage: checkalign.py [-h] [-g PENALTIES] [-d DISTANCE_FUNCTION] [-q] [-v]
+                     [-s SEQUENCES] [-t GROUND_TRUTH] [-p]
+                     [files ...]
 
 positional arguments:
   files                 Files with the results to check (- for stdin)
@@ -31,7 +33,12 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -g PENALTIES, --penalties PENALTIES
-                        Penalties in x,o,e format (mismatch, gap-open, gap-extend). Default is 1,0,1 (Edit distance)
+                        Penalties in a,x,o,e,o1,e1 format (match, mismatch,
+                        gap-open, gap-extend, gap-open1, gap-extend1). Default
+                        is 0,1,0,1,0,0 (equivalent to edit distance)
+  -d DISTANCE_FUNCTION, --distance-function DISTANCE_FUNCTION
+                        Distance function. 'edit', 'affine' or 'affine2p'.
+                        Default is 'edit'
   -q, --quiet           Don't print any output on the stdout
   -v, --verbose         Print additonal information about incorrect CIGARs
   -s SEQUENCES, --sequences SEQUENCES

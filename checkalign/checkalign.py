@@ -170,7 +170,7 @@ def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
 def checkalign():
     parser = argparse.ArgumentParser()
     parser.add_argument('files', nargs='*', help='Files with the results to check (- for stdin)')
-    parser.add_argument('-g', '--penalties', default='1,0,1,0,0', help='Penalties in x,o,e,o1,e1 format (mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 1,0,1,0,0 (equivalent to edit distance)')
+    parser.add_argument('-g', '--penalties', default='0,1,0,1,0,0', help='Penalties in a,x,o,e,o1,e1 format (match, mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 0,1,0,1,0,0 (equivalent to edit distance)')
     parser.add_argument('-d', '--distance-function', default='edit', help='Distance function. \'edit\', \'affine\' or \'affine2p\'. Default is \'edit\'')
     parser.add_argument('-q', '--quiet', required=False, action='store_true', help='Don\'t print any output on the stdout')
     parser.add_argument('-v', '--verbose', required=False, action='store_true', help='Print additonal information about incorrect CIGARs')
