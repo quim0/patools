@@ -104,25 +104,25 @@ def check_score_edit(score, cigar_ops, cigar_reps):
 
     return (score == score_calc, score_calc)
 
-def check_score_affine(score, cigar_ops, cigar_reps, X, O, E):
+def check_score_affine(score, cigar_ops, cigar_reps, M, X, O, E):
     score_calc = 0
     for idx, op in enumerate(cigar_ops):
         reps = cigar_reps[idx]
         if op == 'M':
-            continue
+            score_calc += M * reps
         elif op == 'X':
             score_calc += X * reps
         elif op in ['I', 'D']:
             score_calc += O + E * reps
 
-    return (score == score_calc, score_calc)
+    return (abs(score) == abs(score_calc), score_calc)
 
-def check_score_affine2p(score, cigar_ops, cigar_reps, X, O1, E1, O2, E2):
+def check_score_affine2p(score, cigar_ops, cigar_reps, M, X, O1, E1, O2, E2):
     score_calc = 0
     for idx, op in enumerate(cigar_ops):
         reps = cigar_reps[idx]
         if op == 'M':
-            continue
+            score_calc += M * reps
         elif op == 'X':
             score_calc += X * reps
         elif op in ['I', 'D']:
@@ -131,7 +131,7 @@ def check_score_affine2p(score, cigar_ops, cigar_reps, X, O1, E1, O2, E2):
                 O2 + E2 * reps
             )
 
-    return (score == score_calc, score_calc)
+    return (abs(score) == abs(score_calc), score_calc)
 
 def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
     text_pos = 0
@@ -170,7 +170,7 @@ def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
 def checkalign():
     parser = argparse.ArgumentParser()
     parser.add_argument('files', nargs='*', help='Files with the results to check (- for stdin)')
-    parser.add_argument('-g', '--penalties', default='1,0,1,0,0', help='Penalties in x,o,e,o1,e1 format (mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 1,0,1,0,0 (equivalent to edit distance)')
+    parser.add_argument('-g', '--penalties', default='0,1,0,1,0,0', help='Penalties in a,x,o,e,o1,e1 format (match, mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 0,1,0,1,0,0 (equivalent to edit distance)')
     parser.add_argument('-d', '--distance-function', default='edit', help='Distance function. \'edit\', \'affine\' or \'affine2p\'. Default is \'edit\'')
     parser.add_argument('-q', '--quiet', required=False, action='store_true', help='Don\'t print any output on the stdout')
     parser.add_argument('-v', '--verbose', required=False, action='store_true', help='Print additonal information about incorrect CIGARs')
@@ -181,17 +181,25 @@ def checkalign():
     args = parser.parse_args()
 
     penalties = args.penalties.split(',')
-    if args.distance_function == 'affine' and len(penalties) < 3:
+    if args.distance_function == 'affine' and len(penalties) < 4:
         error_console.print("Invalid number of penalties")
         quit(1)
-    if args.distance_function == 'affine2p' and len(penalties) < 5:
+    if args.distance_function == 'affine2p' and len(penalties) < 6:
         error_console.print("Invalid number of penalties for affine2p")
         quit(1)
 
     if args.distance_function == 'affine':
-        X,O,E = map(int, penalties[:3])
+        M,X,O,E = map(int, penalties[:4])
+        if M >= 0: 
+            X,O,E = -abs(X),-abs(O),-abs(E)
+        else:
+            X,O,E = abs(X),abs(O),abs(E)
     elif args.distance_function == 'affine2p':
-        X,O,E,O1,E1 = map(int, penalties[:5])
+        M,X,O,E,O1,E1 = map(int, penalties[:6])
+        if M >= 0: 
+            X,O,E,O1,E1 = -abs(X),-abs(O),-abs(E),-abs(O1),-abs(E1)
+        else:
+            X,O,E,O1,E1 = abs(X),abs(O),abs(E),abs(O1),abs(E1)
 
     if args.files == []:
         parser.print_help()
@@ -344,9 +352,9 @@ def checkalign():
             if args.distance_function == 'edit':
                 is_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
             elif args.distance_function == 'affine':
-                is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, X, O, E)
+                is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, M, X, O, E)
             elif args.distance_function == 'affine2p':
-                is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, X, O, E, O1, E1)
+                is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, M, X, O, E, O1, E1)
             else:
                 error_console.print(f"Invalid distance function {args.distance_function}")
                 quit
