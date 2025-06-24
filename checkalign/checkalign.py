@@ -126,10 +126,16 @@ def check_score_affine2p(score, cigar_ops, cigar_reps, M, X, O1, E1, O2, E2):
         elif op == 'X':
             score_calc += X * reps
         elif op in ['I', 'D']:
-            score_calc += min(
-                O1 + E1 * reps,
-                O2 + E2 * reps
-            )
+            if O1 < 0 and E1 < 0 and O2 < 0 and E2 < 0:
+                score_calc += max(
+                    O1 + E1 * reps,
+                    O2 + E2 * reps
+                )
+            else:
+                score_calc += min(
+                    O1 + E1 * reps,
+                    O2 + E2 * reps
+                )
 
     return (abs(score) == abs(score_calc), score_calc)
 
