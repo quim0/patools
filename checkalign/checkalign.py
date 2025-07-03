@@ -189,10 +189,10 @@ def checkalign():
     penalties = args.penalties.split(',')
     if args.distance_function == 'affine' and len(penalties) < 4:
         error_console.print("Invalid number of penalties")
-        quit(1)
+        sys.exit(1)
     if args.distance_function == 'affine2p' and len(penalties) < 6:
         error_console.print("Invalid number of penalties for affine2p")
-        quit(1)
+        sys.exit(1)
 
     if args.distance_function == 'affine':
         M,X,O,E = map(int, penalties[:4])
@@ -209,7 +209,7 @@ def checkalign():
 
     if args.files == []:
         parser.print_help()
-        quit(1)
+        sys.exit(1)
 
     # Open sequences file on the fly if needed
     seq_f = None
@@ -274,7 +274,7 @@ def checkalign():
                     lines = f.readlines()
             except (FileNotFoundError, IsADirectoryError) as e:
                 error_console.print(f'Error opening file {results_file}... Skipping.')
-                quit(1)
+                sys.exit(1)
 
         avg_score = 0
         max_score = 0
@@ -364,7 +364,7 @@ def checkalign():
                 is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, M, X, O, E, O1, E1)
             else:
                 error_console.print(f"Invalid distance function {args.distance_function}")
-                quit
+                sys.exit(1)
 
             if not is_correct or not is_traceback_correct:
                 update_incorrect_cigars_table(incorrect_cigars_table, line_num, score, cigar, cigar_score, gt_scores[line_num] if with_ground_truth else None)
@@ -402,7 +402,7 @@ def checkalign():
     if not args.quiet:
         console.print(results)
 
-    quit(reval)
+    sys.exit(reval)
 
 if __name__ == '__main__':
     checkalign()
