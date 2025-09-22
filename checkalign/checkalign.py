@@ -321,50 +321,49 @@ def checkalign():
                     ops.append(e)
 
             is_correct = True
-
-            if with_ground_truth:
-                if gt_scores[line_num] != score:
-                    is_correct = False
-            
             is_traceback_correct = True
-            if len(elements) == 4:
-                pattern = elements[2]
-                text = elements[3]
-                ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
-                if not ok:
-                    is_correct = False
-                    #if not args.quiet:
-                    #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
-            elif seq_f:
-                # Read next two lines from seq_f
-                pat_line = seq_f.readline()
-                txt_line = seq_f.readline()
-                pattern = text = ''
-                if not pat_line or not txt_line:
-                    print(f"Sequences file ended prematurely at line {line_num}")
-                    seq_f.close()
-                    seq_f = None
-                    pattern = text = ''
-                    break
-                else:
-                    pattern = pat_line.strip()[1:]
-                    text    = txt_line.strip()[1:]
-                ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
-                if not ok:
-                    is_traceback_correct = False
-                    #if not args.quiet:
-                    #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
 
-            # Calculate score
-            if args.distance_function == 'edit':
-                is_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
-            elif args.distance_function == 'affine':
-                is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, M, X, O, E)
-            elif args.distance_function == 'affine2p':
-                is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, M, X, O, E, O1, E1)
+            if with_ground_truth and gt_scores[line_num] != score:
+                    is_correct = False
             else:
-                error_console.print(f"Invalid distance function {args.distance_function}")
-                sys.exit(1)
+                if len(elements) == 4:
+                    pattern = elements[2]
+                    text = elements[3]
+                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
+                    if not ok:
+                        is_correct = False
+                        #if not args.quiet:
+                        #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
+                elif seq_f:
+                    # Read next two lines from seq_f
+                    pat_line = seq_f.readline()
+                    txt_line = seq_f.readline()
+                    pattern = text = ''
+                    if not pat_line or not txt_line:
+                        print(f"Sequences file ended prematurely at line {line_num}")
+                        seq_f.close()
+                        seq_f = None
+                        pattern = text = ''
+                        break
+                    else:
+                        pattern = pat_line.strip()[1:]
+                        text    = txt_line.strip()[1:]
+                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
+                    if not ok:
+                        is_traceback_correct = False
+                        #if not args.quiet:
+                        #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
+
+                # Calculate score
+                if args.distance_function == 'edit':
+                    is_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
+                elif args.distance_function == 'affine':
+                    is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, M, X, O, E)
+                elif args.distance_function == 'affine2p':
+                    is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, M, X, O, E, O1, E1)
+                else:
+                    error_console.print(f"Invalid distance function {args.distance_function}")
+                    sys.exit(1)
 
             if not is_correct or not is_traceback_correct:
                 update_incorrect_cigars_table(incorrect_cigars_table, line_num, score, cigar, cigar_score, gt_scores[line_num] if with_ground_truth else None)
