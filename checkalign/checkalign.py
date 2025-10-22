@@ -257,7 +257,7 @@ def checkalign():
                 error_console.print(f'Error opening file {curr_gt}... Skipping.')
                 with_ground_truth = False
 
-    reval = 0
+    retval = 0
     results = Table(title="Results")
     results.add_column("File")
     results.add_column("Correct", style="green")
@@ -401,7 +401,7 @@ def checkalign():
     if not args.quiet:
         console.print(results)
 
-    sys.exit(reval)
+    sys.exit(retval)
 
 if __name__ == '__main__':
     checkalign()
