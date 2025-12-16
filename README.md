@@ -23,9 +23,7 @@ pip3 install git+https://github.com/quim0/patools.git
 Check for the correctness of one or multiple `.out` files, or from stdin.
 
 ```
-usage: checkalign.py [-h] [-g PENALTIES] [-d DISTANCE_FUNCTION] [-q] [-v]
-                     [-s SEQUENCES] [-t GROUND_TRUTH] [-p]
-                     [files ...]
+usage: checkalign [-h] [-g PENALTIES] [-d DISTANCE_FUNCTION] [-q] [-v] [-s SEQUENCES] [-t GROUND_TRUTH] [-x] [-p] [files ...]
 
 positional arguments:
   files                 Files with the results to check (- for stdin)
@@ -33,18 +31,17 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -g PENALTIES, --penalties PENALTIES
-                        Penalties in a,x,o,e,o1,e1 format (match, mismatch,
-                        gap-open, gap-extend, gap-open1, gap-extend1). Default
-                        is 0,1,0,1,0,0 (equivalent to edit distance)
+                        Penalties in a,x,o,e,o1,e1 format (match, mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 0,1,0,1,0,0 (equivalent to edit
+                        distance)
   -d DISTANCE_FUNCTION, --distance-function DISTANCE_FUNCTION
-                        Distance function. 'edit', 'affine' or 'affine2p'.
-                        Default is 'edit'
+                        Distance function. 'edit', 'affine' or 'affine2p'. Default is 'edit'
   -q, --quiet           Don't print any output on the stdout
   -v, --verbose         Print additonal information about incorrect CIGARs
   -s SEQUENCES, --sequences SEQUENCES
                         File with the input sequences
   -t GROUND_TRUTH, --ground-truth GROUND_TRUTH
                         File with the ground truth
+  -x, --no-mismatches   Check CIGARs without mismatches (e.g. the ones produced by KSW2)
   -p, --plot            Create a plot with cumulative score
 ```
 

@@ -139,7 +139,7 @@ def check_score_affine2p(score, cigar_ops, cigar_reps, M, X, O1, E1, O2, E2):
 
     return (abs(score) == abs(score_calc), score_calc)
 
-def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
+def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text, with_mismatches=True):
     text_pos = 0
     pattern_pos = 0
 
@@ -148,7 +148,7 @@ def check_cigar_sequences(score, cigar_ops, cigar_reps, pattern, text):
             reps = cigar_reps[idx]
             for _ in range(reps):
                 if op == 'M':
-                    if pattern[pattern_pos] != text[text_pos]:
+                    if with_mismatches and (pattern[pattern_pos] != text[text_pos]):
                         return False
                     pattern_pos += 1
                     text_pos += 1
@@ -182,6 +182,7 @@ def checkalign():
     parser.add_argument('-v', '--verbose', required=False, action='store_true', help='Print additonal information about incorrect CIGARs')
     parser.add_argument('-s', '--sequences', required=False, help='File with the input sequences')
     parser.add_argument('-t', '--ground-truth', required=False, help='File with the ground truth')
+    parser.add_argument('-x', '--no-mismatches', required=False, action='store_true', help='Check CIGARs without mismatches (e.g. the ones produced by KSW2)')
     parser.add_argument('-p', '--plot', required=False, action='store_true', help='Create a plot with cumulative score')
 
     args = parser.parse_args()
@@ -227,6 +228,10 @@ def checkalign():
         plot_data = {f: [] for f in args.files}
         for f in args.files:
             plot_data[f'ground_truth'] = []
+
+    with_mismatches = True
+    if args.no_mismatches:
+        with_mismatches = False
 
     with_ground_truth = False
     if args.ground_truth:
@@ -329,7 +334,7 @@ def checkalign():
                 if len(elements) == 4:
                     pattern = elements[2]
                     text = elements[3]
-                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
+                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text, with_mismatches)
                     if not ok:
                         is_correct = False
                         #if not args.quiet:
@@ -348,7 +353,7 @@ def checkalign():
                     else:
                         pattern = pat_line.strip()[1:]
                         text    = txt_line.strip()[1:]
-                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text)
+                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text, with_mismatches)
                     if not ok:
                         is_traceback_correct = False
                         #if not args.quiet:
