@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import argparse
-import sys, os
+import os
+import re
+import sys
 from tqdm import tqdm
 from rich.console import Console
 from rich.table import Table
 
 PROGRESS_CHECK = 5000
+CIGAR_PATTERN = re.compile(r'(?:[1-9]\d*[MXID])+\Z')
+CIGAR_ELEMENT_PATTERN = re.compile(r'([1-9]\d*)([MXID])')
 
 console = Console()
 error_console = Console(stderr=True)
@@ -15,8 +19,8 @@ def print_report(correct, incorrect, results_file):
 
 def update_incorrect_cigars_table(table, line_num, score, cigar, cigar_score, gt_score=None):
     args = [str(line_num), str(score), cigar, str(cigar_score)]
-    if gt_score:
-        args.append(str(gt_score))
+    if len(table.columns) == 5:
+        args.append(str(gt_score) if gt_score is not None else "N/A")
     table.add_row(*args)
 
 def generate_incorrect_cigars_table(filename, with_gt):
@@ -29,6 +33,37 @@ def generate_incorrect_cigars_table(filename, with_gt):
         table.add_column("Ground truth score")
 
     return table
+
+
+def parse_cigar(cigar):
+    """Parse the supported CIGAR subset, rejecting partial or empty input."""
+    if not CIGAR_PATTERN.fullmatch(cigar):
+        raise ValueError(
+            "CIGAR must contain positive counts followed by M, X, I, or D"
+        )
+
+    elements = CIGAR_ELEMENT_PATTERN.findall(cigar)
+    cigar_reps = [int(reps) for reps, _ in elements]
+    cigar_ops = [op for _, op in elements]
+    return cigar_ops, cigar_reps
+
+
+def parse_sequence_pairs(lines):
+    """Parse pairs in the .seq format: a >pattern line and a <text line."""
+    if len(lines) % 2 != 0:
+        raise ValueError("Sequences file must contain complete pairs of lines")
+
+    pairs = []
+    for index in range(0, len(lines), 2):
+        pattern_line = lines[index].strip()
+        text_line = lines[index + 1].strip()
+        pair_number = index // 2 + 1
+        if not pattern_line.startswith('>') or not text_line.startswith('<'):
+            raise ValueError(
+                f"Invalid sequence pair {pair_number}: expected >pattern and <text"
+            )
+        pairs.append((pattern_line[1:], text_line[1:]))
+    return pairs
 
 
 def plot_cummulative_scores(data):
@@ -177,7 +212,7 @@ def checkalign():
     parser = argparse.ArgumentParser()
     parser.add_argument('files', nargs='*', help='Files with the results to check (- for stdin)')
     parser.add_argument('-g', '--penalties', default='0,1,0,1,0,0', help='Penalties in a,x,o,e,o1,e1 format (match, mismatch, gap-open, gap-extend, gap-open1, gap-extend1). Default is 0,1,0,1,0,0 (equivalent to edit distance)')
-    parser.add_argument('-d', '--distance-function', default='edit', help='Distance function. \'edit\', \'affine\' or \'affine2p\'. Default is \'edit\'')
+    parser.add_argument('-d', '--distance-function', choices=('edit', 'affine', 'affine2p'), default='edit', help='Distance function. \'edit\', \'affine\' or \'affine2p\'. Default is \'edit\'')
     parser.add_argument('-q', '--quiet', required=False, action='store_true', help='Don\'t print any output on the stdout')
     parser.add_argument('-v', '--verbose', required=False, action='store_true', help='Print additonal information about incorrect CIGARs')
     parser.add_argument('-s', '--sequences', required=False, help='File with the input sequences')
@@ -188,21 +223,24 @@ def checkalign():
     args = parser.parse_args()
 
     penalties = args.penalties.split(',')
+    try:
+        penalty_values = list(map(int, penalties))
+    except ValueError:
+        parser.error("Penalties must be comma-separated integers")
+
     if args.distance_function == 'affine' and len(penalties) < 4:
-        error_console.print("Invalid number of penalties")
-        sys.exit(1)
+        parser.error("Affine distance requires at least four penalties")
     if args.distance_function == 'affine2p' and len(penalties) < 6:
-        error_console.print("Invalid number of penalties for affine2p")
-        sys.exit(1)
+        parser.error("Affine2p distance requires at least six penalties")
 
     if args.distance_function == 'affine':
-        M,X,O,E = map(int, penalties[:4])
+        M,X,O,E = penalty_values[:4]
         if M >= 0: 
             X,O,E = -abs(X),-abs(O),-abs(E)
         else:
             X,O,E = abs(X),abs(O),abs(E)
     elif args.distance_function == 'affine2p':
-        M,X,O,E,O1,E1 = map(int, penalties[:6])
+        M,X,O,E,O1,E1 = penalty_values[:6]
         if M >= 0: 
             X,O,E,O1,E1 = -abs(X),-abs(O),-abs(E),-abs(O1),-abs(E1)
         else:
@@ -212,55 +250,54 @@ def checkalign():
         parser.print_help()
         sys.exit(1)
 
-    # Open sequences file on the fly if needed
-    seq_f = None
+    sequence_pairs = None
     if args.sequences:
         try:
-            seq_f = open(args.sequences)
-        except Exception as e:
-            print(f"Error opening sequences file: {e}")
-            seq_f = None
+            with open(args.sequences, 'r') as seq_f:
+                sequence_lines = seq_f.readlines()
+        except (OSError, UnicodeError) as e:
+            error_console.print(f"Error opening sequences file: {e}")
+            sys.exit(1)
+
+        try:
+            sequence_pairs = parse_sequence_pairs(sequence_lines)
+        except ValueError as e:
+            error_console.print(str(e))
+            sys.exit(1)
 
     plot_data = {}
     if args.plot:
         # For each file, create dict entry to store all the scores and another for
         # the ground truth.
         plot_data = {f: [] for f in args.files}
-        for f in args.files:
-            plot_data[f'ground_truth'] = []
+        plot_data['ground_truth'] = []
 
     with_mismatches = True
     if args.no_mismatches:
         with_mismatches = False
 
     with_ground_truth = False
+    gt_scores = []
     if args.ground_truth:
         curr_gt = args.ground_truth
-        if not curr_gt:
-            error_console.print(f"No ground truth for {f}.")
+        try:
+            with open(curr_gt, 'r') as fgt:
+                for gt_line_num, line in enumerate(fgt, start=1):
+                    elements = line.split()
+                    try:
+                        gt_scores.append(abs(int(elements[0])))
+                    except (IndexError, ValueError):
+                        error_console.print(
+                            f"Invalid ground-truth score at line {gt_line_num}"
+                        )
+                        sys.exit(1)
+        except (OSError, UnicodeError) as e:
+            error_console.print(f'Error opening ground-truth file {curr_gt}: {e}')
+            sys.exit(1)
 
-        else:
-            with_ground_truth = True
-            gt_scores = []
-            try:
-                with open(curr_gt, 'r') as fgt:
-                    for l in fgt:
-                        l = l.rstrip()
-                        elements = l.split()
-                        try:
-                            score = abs(int(elements[0]))
-                        except ValueError:
-                            print(f"Invalid score at line {line_num}")
-                            exit(1)
-                        gt_scores.append(score)
-
-                    # If plotting in enabled, store the ground truth
-                    if args.plot:
-                        plot_data['ground_truth'] = gt_scores
-
-            except (FileNotFoundError, IsADirectoryError) as e:
-                error_console.print(f'Error opening file {curr_gt}... Skipping.')
-                with_ground_truth = False
+        with_ground_truth = True
+        if args.plot:
+            plot_data['ground_truth'] = gt_scores
 
     retval = 0
     results = Table(title="Results")
@@ -281,7 +318,8 @@ def checkalign():
                 error_console.print(f'Error opening file {results_file}... Skipping.')
                 sys.exit(1)
 
-        avg_score = 0
+        score_total = 0
+        score_count = 0
         max_score = 0
         correct = 0
         incorrect = 0
@@ -289,12 +327,27 @@ def checkalign():
         pbar = tqdm(total=len(lines), unit='CIGARs', ncols=120,
                     disable=args.quiet, leave=False,
                     bar_format='{l_bar}{bar}{r_bar}' + f' {os.path.basename(results_file)}')
+        if with_ground_truth and len(gt_scores) != len(lines):
+            error_console.print(
+                f"Ground truth has {len(gt_scores)} rows but {results_file} has "
+                f"{len(lines)} rows"
+            )
+            retval = 1
+        if sequence_pairs is not None and len(sequence_pairs) != len(lines):
+            error_console.print(
+                f"Sequences file has {len(sequence_pairs)} pairs but {results_file} "
+                f"has {len(lines)} rows"
+            )
+            retval = 1
+
         for line_num, line in enumerate(lines):
             pbar.set_description(f'(correct={correct}, incorrect={incorrect})')
             line = line.rstrip()
             elements = line.split()
-            if len(elements) < 2 or len(elements) > 4:
-                error_console.print(f"Invalid score or CIGAR at line {line_num}")
+            if len(elements) not in (2, 4):
+                error_console.print(f"Invalid result row at line {line_num + 1}")
+                incorrect += 1
+                retval = 1
                 pbar.update(1)
                 continue
 
@@ -302,88 +355,80 @@ def checkalign():
                 score = abs(int(elements[0]))
                 cigar = elements[1]
             except ValueError:
-                error_console.print(f"Invalid score or CIGAR at line {line_num}")
+                error_console.print(f"Invalid score at line {line_num + 1}")
+                incorrect += 1
+                retval = 1
                 pbar.update(1)
                 continue
 
             if args.plot:
                 plot_data[results_file].append(score)
 
-            cigar_tmp = cigar.replace('M', ' ')
-            cigar_tmp = cigar_tmp.replace('X', ' ')
-            cigar_tmp = cigar_tmp.replace('I', ' ')
-            cigar_tmp = cigar_tmp.replace('D', ' ')
             try:
-                cigar_reps = list(map(int, cigar_tmp.split()))
-            except ValueError:
-                error_console.print(f"Invalid op at CIGAR {line_num}")
+                ops, cigar_reps = parse_cigar(cigar)
+            except ValueError as e:
+                error_console.print(f"Invalid CIGAR at line {line_num + 1}: {e}")
+                incorrect += 1
+                retval = 1
                 pbar.update(1)
                 continue
 
-            ops = []
-            for e in cigar:
-                if e in ['M', 'X', 'I', 'D']:
-                    ops.append(e)
-
-            is_correct = True
             is_traceback_correct = True
-
-            if with_ground_truth and gt_scores[line_num] != score:
-                    is_correct = False
-            else:
-                if len(elements) == 4:
-                    pattern = elements[2]
-                    text = elements[3]
-                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text, with_mismatches)
-                    if not ok:
-                        is_correct = False
-                        #if not args.quiet:
-                        #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
-                elif seq_f:
-                    # Read next two lines from seq_f
-                    pat_line = seq_f.readline()
-                    txt_line = seq_f.readline()
-                    pattern = text = ''
-                    if not pat_line or not txt_line:
-                        print(f"Sequences file ended prematurely at line {line_num}")
-                        seq_f.close()
-                        seq_f = None
-                        pattern = text = ''
-                        break
-                    else:
-                        pattern = pat_line.strip()[1:]
-                        text    = txt_line.strip()[1:]
-                    ok = check_cigar_sequences(score, ops, cigar_reps, pattern, text, with_mismatches)
-                    if not ok:
-                        is_traceback_correct = False
-                        #if not args.quiet:
-                        #    error_console.print(f"CIGAR {line_num} do not fit the pattern and text.")
-
-                # Calculate score
-                if args.distance_function == 'edit':
-                    is_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
-                elif args.distance_function == 'affine':
-                    is_correct, cigar_score = check_score_affine(score, ops, cigar_reps, M, X, O, E)
-                elif args.distance_function == 'affine2p':
-                    is_correct, cigar_score = check_score_affine2p(score, ops, cigar_reps, M, X, O, E, O1, E1)
+            if len(elements) == 4:
+                pattern = elements[2]
+                text = elements[3]
+                is_traceback_correct = check_cigar_sequences(
+                    score, ops, cigar_reps, pattern, text, with_mismatches
+                )
+            elif sequence_pairs is not None:
+                if line_num >= len(sequence_pairs):
+                    is_traceback_correct = False
                 else:
-                    error_console.print(f"Invalid distance function {args.distance_function}")
-                    sys.exit(1)
+                    pattern, text = sequence_pairs[line_num]
+                    is_traceback_correct = check_cigar_sequences(
+                        score, ops, cigar_reps, pattern, text, with_mismatches
+                    )
+
+            if args.distance_function == 'edit':
+                is_score_correct, cigar_score = check_score_edit(score, ops, cigar_reps)
+            elif args.distance_function == 'affine':
+                is_score_correct, cigar_score = check_score_affine(score, ops, cigar_reps, M, X, O, E)
+            else:
+                is_score_correct, cigar_score = check_score_affine2p(
+                    score, ops, cigar_reps, M, X, O, E, O1, E1
+                )
+
+            is_ground_truth_correct = (
+                not with_ground_truth
+                or (line_num < len(gt_scores) and gt_scores[line_num] == score)
+            )
+            is_correct = (
+                is_score_correct
+                and is_traceback_correct
+                and is_ground_truth_correct
+            )
 
             if not is_correct or not is_traceback_correct:
-                update_incorrect_cigars_table(incorrect_cigars_table, line_num, score, cigar, cigar_score, gt_scores[line_num] if with_ground_truth else None)
+                gt_score = (
+                    gt_scores[line_num]
+                    if with_ground_truth and line_num < len(gt_scores)
+                    else None
+                )
+                update_incorrect_cigars_table(
+                    incorrect_cigars_table, line_num + 1, score, cigar,
+                    cigar_score, gt_score
+                )
                 #if not args.quiet:
                 #    get_incorrect_cigar_table(line_num, score, cigar, cigar_score, gt_scores[line_num] if with_ground_truth else None)
                 incorrect += 1
             else:
                 correct += 1
 
-            avg_score += score
+            score_total += score
+            score_count += 1
             max_score = max(max_score, score)
 
             pbar.update(1)
-        if seq_f:
-            seq_f.close()
         pbar.close()
 
         if (correct+incorrect) == 0:
@@ -394,14 +439,15 @@ def checkalign():
         if incorrect > 0 and args.verbose and not args.quiet:
             console.print(incorrect_cigars_table)
 
-        print(f'Average score for {results_file}: {avg_score/(correct+incorrect):.2f}')
-        print(f'Max score for {results_file}: {max_score}')
+        if not args.quiet and score_count:
+            print(f'Average score for {results_file}: {score_total/score_count:.2f}')
+            print(f'Max score for {results_file}: {max_score}')
 
-        if args.plot:
-            plot_cummulative_scores(plot_data)
-
-        if incorrect > 0:
+        if incorrect > 0 or score_count == 0:
             retval = 1
+
+    if args.plot:
+        plot_cummulative_scores(plot_data)
 
     if not args.quiet:
         console.print(results)
