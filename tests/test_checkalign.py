@@ -152,6 +152,27 @@ class CheckalignCliTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_multiple_files_can_be_checked_in_parallel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            first_results = directory / "first.out"
+            second_results = directory / "second.out"
+            first_results.write_text("0 1M A A\n")
+            second_results.write_text("1 1X A T\n")
+
+            result = run_checkalign(
+                ["-q", "--jobs", "2", str(first_results), str(second_results)]
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_jobs_must_be_positive(self):
+        result = run_checkalign(["-q", "--jobs", "0", "-"])
+
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_invalid_penalties_produce_an_argument_error(self):
         result = run_checkalign(["-q", "--penalties", "bad", "-"])
 

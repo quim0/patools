@@ -23,7 +23,7 @@ pip3 install git+https://github.com/quim0/patools.git
 Check for the correctness of one or multiple `.out` files, or from stdin.
 
 ```
-usage: checkalign [-h] [-g PENALTIES] [-d DISTANCE_FUNCTION] [-q] [-v] [-s SEQUENCES] [-t GROUND_TRUTH] [-x] [-p] [files ...]
+usage: checkalign [-h] [-g PENALTIES] [-d DISTANCE_FUNCTION] [-j JOBS] [-q] [-v] [-s SEQUENCES] [-t GROUND_TRUTH] [-x] [-p] [files ...]
 
 positional arguments:
   files                 Files with the results to check (- for stdin)
@@ -35,6 +35,7 @@ options:
                         distance)
   -d DISTANCE_FUNCTION, --distance-function DISTANCE_FUNCTION
                         Distance function. 'edit', 'affine' or 'affine2p'. Default is 'edit'
+  -j JOBS, --jobs JOBS  Number of result files to check in parallel. Default is 1
   -q, --quiet           Don't print any output on the stdout
   -v, --verbose         Print additonal information about incorrect CIGARs
   -s SEQUENCES, --sequences SEQUENCES
@@ -76,4 +77,10 @@ options:
 Check if a file `cigars.out` is correct, and compare them with a ground truth `correct_cigars.out`:
 ```bash
 checkalign -t correct_cigars.out cigars.out
+```
+
+Check several files with four worker processes. A single progress bar tracks
+completed files, so workers never compete for terminal output:
+```bash
+checkalign --jobs 4 results/*.out
 ```
